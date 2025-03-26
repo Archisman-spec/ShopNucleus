@@ -1,5 +1,6 @@
 package com.archi.Ecomm_Backend.models;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -31,6 +32,7 @@ public class Payment {
 
     private Double amount;
 
+    @JsonIgnore
     @OneToOne(mappedBy = "payment", fetch = FetchType.EAGER, cascade = CascadeType.ALL)
     private Order order;
 
