@@ -1,7 +1,5 @@
 package com.archi.Ecomm_Backend.exceptions;
 
-import java.io.Serial;
-
 public class ResourceNotFoundException extends RuntimeException{
     private static final long serialVersionUID= 1l;
 
@@ -18,7 +16,10 @@ public class ResourceNotFoundException extends RuntimeException{
     }
 
     public ResourceNotFoundException(String resourceName, String field, Long fieldId) {
-        super(String.format("%s is not found with %s: %s"), resourceName, field, fieldId );
+        super(String.format("%s is not found with %s: %s", resourceName, field, fieldId ));
+        this.resourceName = resourceName;
+        this.field = field;
+        this.fieldId = fieldId;
 
     }
 

@@ -1,10 +1,9 @@
 package com.archi.Ecomm_Backend.service;
 
 import com.archi.Ecomm_Backend.exceptions.APIException;
+import com.archi.Ecomm_Backend.exceptions.ResourceNotFoundException;
 import com.archi.Ecomm_Backend.models.*;
-import com.archi.Ecomm_Backend.payloads.AddressDTO;
-import com.archi.Ecomm_Backend.payloads.UserDTO;
-import com.archi.Ecomm_Backend.payloads.UserResponse;
+import com.archi.Ecomm_Backend.payloads.*;
 import com.archi.Ecomm_Backend.repository.AddressRepo;
 import com.archi.Ecomm_Backend.repository.RoleRepo;
 import com.archi.Ecomm_Backend.repository.UserRepo;
@@ -15,6 +14,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 
 @Transactional
@@ -30,7 +30,10 @@ public class UserServiceImpl implements UserService{
 
     private final CartService cartService;
 
+    private final AddressService addressService;
+
     private final ModelMapper modelMapper;
+
 
     @Override
     public UserDTO registerUser(UserDTO userDTO) {
@@ -47,17 +50,20 @@ public class UserServiceImpl implements UserService{
             }
             user.getRoles().add(customerRole);
 
-            AddressDTO addressDTO = userDTO.getAddress();
-            Address address= addressRepo.findByBuildingNameAndStreetAndCityAndStateAndCountryAndPincode(
-                    addressDTO.getBuildingName(),
-                    addressDTO.getStreet(),
-                    addressDTO.getCity(),
-                    addressDTO.getState(),
-                    addressDTO.getCountry(),
-                    addressDTO.getPincode()
-            ).orElseGet(()-> createNewAddress(addressDTO));
+            List<Address> addresses = userDTO.getAddress().stream()
+                            .map(addressDTO -> {
+                                Address existingAddress = addressRepo.findByBuildingNameAndStreetAndCityAndStateAndCountryAndPincode(
+                                        addressDTO.getBuildingName(),
+                                        addressDTO.getStreet(),
+                                        addressDTO.getCity(),
+                                        addressDTO.getState(),
+                                        addressDTO.getCountry(),
+                                        addressDTO.getPincode()
+                                );
+                                return existingAddress == null ? modelMapper.map(addressService.createAddress(addressDTO), Address.class) : existingAddress;
+                            }).collect(Collectors.toList());
 
-            user.setAddresses(List.of(address));
+            user.setAddresses(addresses);
 
             User registeredUser = userRepo.save(user);
 
@@ -65,7 +71,9 @@ public class UserServiceImpl implements UserService{
 
             userDTO = modelMapper.map(registeredUser, UserDTO.class);
 
-            userDTO.setAddress(modelMapper.map(user.getAddresses().stream().findFirst().get(), AddressDTO.class));
+            userDTO.setAddress(registeredUser.getAddresses().stream()
+                    .map(address -> modelMapper.map(address, AddressDTO.class))
+                    .collect(Collectors.toList()));
 
              return userDTO;
         } catch (DataIntegrityViolationException e) {
@@ -81,22 +89,97 @@ public class UserServiceImpl implements UserService{
 
     @Override
     public UserDTO getUsersById(Long userId) {
-        return null;
+        User user= userRepo.findById(userId)
+                .orElseThrow(()-> new ResourceNotFoundException("User", "userId", userId));
+
+        UserDTO userDTO = modelMapper.map(user, UserDTO.class);
+
+        List<AddressDTO> addresses = user.getAddresses().stream()
+                .map(address -> modelMapper.map(address, AddressDTO.class))
+                .collect(Collectors.toList());
+
+        userDTO.setAddress(addresses);
+
+        CartDTO cart= modelMapper.map(user.getCart(), CartDTO.class);
+
+        List<ProductDTO> products = user.getCart().getCartItems().stream().map(item-> modelMapper.map(item.getProduct(), ProductDTO.class)).collect(Collectors.toList());
+
+        userDTO.setCart(cart);
+
+        userDTO.getCart().setProducts(products);
+
+        return userDTO;
+
     }
 
     @Override
     public UserDTO updateUser(Long userId, UserDTO userDTO) {
-        return null;
+
+        User user = userRepo.findById(userId)
+                .orElseThrow(()-> new ResourceNotFoundException("User", "userId", userId));
+
+        user.setFirstName(userDTO.getFirstName());
+        user.setLastName(userDTO.getLastName());
+        user.setMobileNumber(userDTO.getMobileNumber());
+        user.setEmail(userDTO.getEmail());
+        user.setPassword(userDTO.getPassword());
+
+        if (userDTO.getAddress() != null && !userDTO.getAddress().isEmpty()) {
+            List<Address> addresses = userDTO.getAddress().stream()
+                    .map(addressDTO -> {
+                        Address existingAddress = addressRepo.findByBuildingNameAndStreetAndCityAndStateAndCountryAndPincode(
+                                addressDTO.getBuildingName(),
+                                addressDTO.getStreet(),
+                                addressDTO.getCity(),
+                                addressDTO.getState(),
+                                addressDTO.getCountry(),
+                                addressDTO.getPincode()
+                        );
+                        return existingAddress == null ? modelMapper.map(addressService.createAddress(addressDTO), Address.class) : existingAddress;
+                    }).collect(Collectors.toList());
+
+            user.setAddresses(addresses);
+        }
+
+        User updatedUser = userRepo.save(user);
+
+        userDTO = modelMapper.map(updatedUser, UserDTO.class);
+
+        List<AddressDTO> addressDTOS= updatedUser.getAddresses().stream()
+                .map(address -> modelMapper.map(address, AddressDTO.class))
+                .collect(Collectors.toList());
+
+        userDTO.setAddress(addressDTOS);
+
+        CartDTO cart = modelMapper.map(user.getCart(), CartDTO.class);
+
+        List<ProductDTO> products = user.getCart().getCartItems().stream()
+                .map(item-> modelMapper.map(item.getProduct(), ProductDTO.class)).collect(Collectors.toList());
+
+        userDTO.setCart(cart);
+
+        userDTO.getCart().setProducts(products);
+
+        return userDTO;
+
     }
+
 
     @Override
     public String deleteUser(Long userId) {
-        return "";
-    }
+        User user = userRepo.findById(userId).orElseThrow(()-> new ResourceNotFoundException("User", "userId", userId));
 
-    private Address createNewAddress(AddressDTO addressDTO) {
-        Address newAddress = modelMapper.map(addressDTO, Address.class);
-        return addressRepo.save(newAddress);
-    }
+        List<CartItem> cartItems = user.getCart().getCartItems();
+        Long cartId = user.getCart().getCartId();
 
+        cartItems.forEach(item -> {
+            Long productId= item.getProduct().getProductId();
+            cartService.deleteProductFromCart(cartId, productId);
+        });
+
+        userRepo.delete(user);
+
+        return "User with userId " + userId + " deleted successfully!";
+
+    }
 }

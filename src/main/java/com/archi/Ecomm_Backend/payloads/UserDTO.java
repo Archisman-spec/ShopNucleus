@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 @Data
@@ -19,7 +20,7 @@ public class UserDTO {
     private String email;
     private String password;
     private Set<Role> roles = new HashSet<>();
-    private AddressDTO address;
+    private List<AddressDTO> address;
     private CartDTO cart;
 
 }
